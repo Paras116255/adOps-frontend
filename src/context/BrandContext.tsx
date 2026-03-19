@@ -35,13 +35,17 @@ const ACTIVE_BRAND_STORAGE_KEY = "adops-active-brand-id"
 function defaultDateRange(): DateRange {
   // Meta's "Last 30 days" calculation:
   // - Until: Yesterday (today's data is incomplete)
-  // - Since: 30 days before yesterday
+  // - Since: 29 days before yesterday (total = 30 days)
+  // Example: If today is March 18, 2026:
+  //   Yesterday = March 17
+  //   29 days before = Feb 16
+  //   Range: Feb 16 to Mar 17 = 30 days ✓
   const yesterday = dayjs().subtract(1, 'day')
-  const thirtyDaysAgo = yesterday.subtract(30, 'day')
+  const twentyNineDaysAgo = yesterday.subtract(29, 'day')
 
   return {
-    since: thirtyDaysAgo.format("YYYY-MM-DD"),  // 30 days ago from yesterday
-    until: yesterday.format("YYYY-MM-DD"),       // Yesterday
+    since: twentyNineDaysAgo.format("YYYY-MM-DD"),  // 29 days before yesterday
+    until: yesterday.format("YYYY-MM-DD"),           // Yesterday
   }
 }
 
