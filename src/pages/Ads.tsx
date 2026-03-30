@@ -93,7 +93,7 @@ type SortField = "name" | "spend" | "impressions" | "reach" | "clicks" | "purcha
 type SortDirection = "asc" | "desc"
 
 export default function Ads() {
-  const { activeBrand, dateRange } = useBrand()
+  const { activeBrand, dateRange, dateFilter } = useBrand()
 
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     const saved = localStorage.getItem("ads-active-tab")

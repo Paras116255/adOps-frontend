@@ -3,7 +3,7 @@ import { Calendar, RefreshCw, LogOut, ChevronDown } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
-import { useBrand } from "../../context/BrandContext"
+import { useBrand, type DatePreset } from "../../context/BrandContext"
 import { useAuth } from "../../context/AuthContext"
 import { get, post } from "../../lib/api"
 import type { MetaConnection } from "../../lib/types"
@@ -11,34 +11,23 @@ import type { MetaConnection } from "../../lib/types"
 dayjs.extend(relativeTime)
 
 // ─── Date range presets ───────────────────────────────────────────────────────
+// These now match the backend presets exactly, ensuring data accuracy with Meta Ads Manager
 
-const PRESETS = [
-  { label: "Today",        days: 0,  isToday: true },
-  { label: "Yesterday",    days: 1,  isYesterday: true },
-  { label: "Last 7 days",  days: 7 },
-  { label: "Last 14 days", days: 14 },
-  { label: "Last 30 days", days: 30 },
+const PRESETS: Array<{ label: string; preset: DatePreset }> = [
+  { label: "Today",         preset: "today" },
+  { label: "Yesterday",     preset: "yesterday" },
+  { label: "Last 7 days",   preset: "last_7_days" },
+  { label: "Last 14 days",  preset: "last_14_days" },
+  { label: "Last 30 days",  preset: "last_30_days" },
+  { label: "Last 90 days",  preset: "last_90_days" },
+  { label: "This month",    preset: "this_month" },
+  { label: "Last month",    preset: "last_month" },
 ]
-
-function presetRange(days: number, isToday?: boolean, isYesterday?: boolean) {
-  if (isToday) {
-    const today = dayjs().format("YYYY-MM-DD")
-    return { since: today, until: today }
-  }
-  if (isYesterday) {
-    const yesterday = dayjs().subtract(1, "day").format("YYYY-MM-DD")
-    return { since: yesterday, until: yesterday }
-  }
-  return {
-    since: dayjs().subtract(days, "day").format("YYYY-MM-DD"),
-    until: dayjs().subtract(1, "day").format("YYYY-MM-DD"),
-  }
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Topbar() {
-  const { brands, activeBrand, dateRange, setActiveBrand, setDateRange } = useBrand()
+  const { brands, activeBrand, dateRange, dateFilter, setActiveBrand, setDateRange, setPreset } = useBrand()
   const { logout } = useAuth()
 
   const [brandOpen, setBrandOpen] = useState(false)
@@ -127,7 +116,9 @@ export default function Topbar() {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
-  const dateLabel = `${dayjs(dateRange.since).format("MMM D")} – ${dayjs(dateRange.until).format("MMM D, YYYY")}`
+  const dateLabel = dateFilter.preset === "custom"
+    ? `${dayjs(dateRange.since).format("MMM D")} – ${dayjs(dateRange.until).format("MMM D, YYYY")}`
+    : PRESETS.find(p => p.preset === dateFilter.preset)?.label || "Custom"
 
   const syncLabel = syncedAt
     ? `Synced ${dayjs(syncedAt).fromNow()}`
@@ -196,15 +187,14 @@ export default function Topbar() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 z-50 bg-white shadow-lg border rounded-lg mt-1 w-52 py-1"
+                className="absolute right-0 z-50 bg-white shadow-lg border rounded-lg mt-1 w-56 py-1"
               >
                 {PRESETS.map((p, idx) => {
-                  const r = presetRange(p.days, p.isToday, p.isYesterday)
-                  const active = r.since === dateRange.since && r.until === dateRange.until
+                  const active = dateFilter.preset === p.preset
                   return (
                     <button
                       key={idx}
-                      onClick={() => { setDateRange(r); setDateOpen(false) }}
+                      onClick={() => { setPreset(p.preset); setDateOpen(false) }}
                       className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition
                                   ${active ? "font-semibold text-blue-600" : "text-gray-700"}`}
                     >
@@ -216,13 +206,17 @@ export default function Topbar() {
                 {/* Custom range inputs */}
                 <div className="border-t mx-2 my-1" />
                 <div className="px-4 py-2 space-y-2">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Custom Range</div>
                   <div>
                     <label className="text-xs text-gray-400 block mb-0.5">From</label>
                     <input
                       type="date"
                       value={dateRange.since}
                       max={dateRange.until}
-                      onChange={(e) => setDateRange({ ...dateRange, since: e.target.value })}
+                      onChange={(e) => {
+                        // Switching to custom preset when manually adjusting dates
+                        setDateRange({ ...dateRange, since: e.target.value })
+                      }}
                       className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                     />
                   </div>
@@ -233,7 +227,10 @@ export default function Topbar() {
                       value={dateRange.until}
                       min={dateRange.since}
                       max={dayjs().subtract(1, "day").format("YYYY-MM-DD")}
-                      onChange={(e) => setDateRange({ ...dateRange, until: e.target.value })}
+                      onChange={(e) => {
+                        // Switching to custom preset when manually adjusting dates
+                        setDateRange({ ...dateRange, until: e.target.value })
+                      }}
                       className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                     />
                   </div>
@@ -241,7 +238,7 @@ export default function Topbar() {
                     onClick={() => setDateOpen(false)}
                     className="w-full bg-blue-600 text-white rounded py-1 text-xs font-medium hover:bg-blue-700 transition"
                   >
-                    Apply
+                    Apply Custom Range
                   </button>
                 </div>
               </motion.div>

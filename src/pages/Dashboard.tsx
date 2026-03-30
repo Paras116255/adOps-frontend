@@ -27,7 +27,7 @@ function Skeleton({ className = "" }: { className?: string }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { activeBrand, dateRange } = useBrand()
+  const { activeBrand, dateRange, dateFilter } = useBrand()
 
   const [campaigns,   setCampaigns]  = useState<Campaign[]>([])
   const [metrics,     setMetrics]    = useState<DailyMetric[]>([])
@@ -69,14 +69,19 @@ export default function Dashboard() {
       setMetrics([])
     }
 
+    // Always use explicit date range for now
+    // TODO: Implement aggregated API integration for preset-based queries
+    // When preset !== "custom", the dates come from backend calculation via sync
+    const metricsPromise = get<DailyMetric[]>("/ad-metrics", {
+      brand_id:    activeBrand.id,
+      entity_type: "campaign",
+      since:       dateRange.since,
+      until:       dateRange.until,
+    })
+
     Promise.all([
       get<Campaign[]>("/integrations/meta/campaigns", { brand_id: activeBrand.id }),
-      get<DailyMetric[]>("/ad-metrics", {
-        brand_id:    activeBrand.id,
-        entity_type: "campaign",
-        since:       dateRange.since,
-        until:       dateRange.until,
-      }),
+      metricsPromise,
     ])
       .then(([camps, mets]) => {
         setCampaigns(camps ?? [])
@@ -92,7 +97,7 @@ export default function Dashboard() {
         }
       })
       .finally(() => setLoading(false))
-  }, [activeBrand, dateRange, refreshKey])
+  }, [activeBrand, dateRange, dateFilter.preset, refreshKey])
 
   // ── Aggregate KPIs from metrics ────────────────────────────────────────────
   const kpis = useMemo(() => {

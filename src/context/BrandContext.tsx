@@ -12,24 +12,44 @@ import type { Brand } from "../lib/types"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type DatePreset =
+  | "today"
+  | "yesterday"
+  | "last_7_days"
+  | "last_14_days"
+  | "last_30_days"
+  | "last_90_days"
+  | "this_month"
+  | "last_month"
+  | "custom"
+
 export interface DateRange {
   since: string  // YYYY-MM-DD
   until: string  // YYYY-MM-DD
 }
 
+export interface DateFilter {
+  preset: DatePreset
+  dateRange: DateRange  // Used for display and when preset is "custom"
+}
+
 interface BrandContextValue {
   brands: Brand[]
   activeBrand: Brand | null
-  dateRange: DateRange
+  dateRange: DateRange  // Kept for backward compatibility
+  dateFilter: DateFilter
   isLoading: boolean
   setActiveBrand: (brand: Brand) => void
-  setDateRange: (range: DateRange) => void
+  setDateRange: (range: DateRange) => void  // Deprecated - use setDateFilter with preset="custom"
+  setDateFilter: (filter: DateFilter) => void
+  setPreset: (preset: DatePreset) => void  // Convenience method to set preset without date range
   refetchBrands: () => Promise<void>
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
-const DATE_RANGE_STORAGE_KEY = "adops-date-range"
+const DATE_FILTER_STORAGE_KEY = "adops-date-filter"
+const DATE_RANGE_STORAGE_KEY = "adops-date-range"  // Legacy - for backward compatibility
 const ACTIVE_BRAND_STORAGE_KEY = "adops-active-brand-id"
 
 function defaultDateRange(): DateRange {
@@ -49,22 +69,44 @@ function defaultDateRange(): DateRange {
   }
 }
 
-function getInitialDateRange(): DateRange {
+function defaultDateFilter(): DateFilter {
+  return {
+    preset: "last_30_days",
+    dateRange: defaultDateRange()
+  }
+}
+
+function getInitialDateFilter(): DateFilter {
   try {
-    const stored = localStorage.getItem(DATE_RANGE_STORAGE_KEY)
+    // Try new format first
+    const stored = localStorage.getItem(DATE_FILTER_STORAGE_KEY)
     if (stored) {
-      const parsed = JSON.parse(stored) as DateRange
-      // Validate that dates are in correct format
+      const parsed = JSON.parse(stored) as DateFilter
+      // Validate preset and date range
+      if (parsed.preset && parsed.dateRange &&
+          dayjs(parsed.dateRange.since, "YYYY-MM-DD", true).isValid() &&
+          dayjs(parsed.dateRange.until, "YYYY-MM-DD", true).isValid()) {
+        return parsed
+      }
+    }
+
+    // Fall back to legacy format
+    const legacyStored = localStorage.getItem(DATE_RANGE_STORAGE_KEY)
+    if (legacyStored) {
+      const parsed = JSON.parse(legacyStored) as DateRange
       if (parsed.since && parsed.until &&
           dayjs(parsed.since, "YYYY-MM-DD", true).isValid() &&
           dayjs(parsed.until, "YYYY-MM-DD", true).isValid()) {
-        return parsed
+        return {
+          preset: "custom",
+          dateRange: parsed
+        }
       }
     }
   } catch {
     // If parsing fails, fall through to default
   }
-  return defaultDateRange()
+  return defaultDateFilter()
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -80,7 +122,7 @@ const BrandContext = createContext<BrandContextValue | null>(null)
 export function BrandProvider({ children }: { children: ReactNode }) {
   const [brands, setBrands] = useState<Brand[]>([])
   const [activeBrand, setActiveBrandState] = useState<Brand | null>(null)
-  const [dateRange, setDateRangeState] = useState<DateRange>(getInitialDateRange)
+  const [dateFilter, setDateFilterState] = useState<DateFilter>(getInitialDateFilter)
   const [isLoading, setIsLoading] = useState(true)
 
   const fetchBrands = useCallback(async () => {
@@ -127,14 +169,29 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Persist date range to localStorage whenever it changes
-  const setDateRange = useCallback((range: DateRange) => {
-    setDateRangeState(range)
+  // Persist date filter to localStorage whenever it changes
+  const setDateFilter = useCallback((filter: DateFilter) => {
+    setDateFilterState(filter)
     try {
-      localStorage.setItem(DATE_RANGE_STORAGE_KEY, JSON.stringify(range))
+      localStorage.setItem(DATE_FILTER_STORAGE_KEY, JSON.stringify(filter))
     } catch (err) {
-      console.warn("Failed to save date range to localStorage:", err)
+      console.warn("Failed to save date filter to localStorage:", err)
     }
+  }, [])
+
+  // Convenience method to set preset without specifying date range
+  // Backend will calculate the actual dates
+  const setPreset = useCallback((preset: DatePreset) => {
+    // For display purposes, we still calculate the date range client-side
+    // But components should use the preset when calling the backend
+    const dateRange = preset === "custom" ? dateFilter.dateRange : defaultDateRange()
+    setDateFilter({ preset, dateRange })
+  }, [dateFilter.dateRange])
+
+  // Legacy method - kept for backward compatibility
+  // Sets preset to "custom" and uses explicit date range
+  const setDateRange = useCallback((range: DateRange) => {
+    setDateFilter({ preset: "custom", dateRange: range })
   }, [])
 
   return (
@@ -142,10 +199,13 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       value={{
         brands,
         activeBrand,
-        dateRange,
+        dateRange: dateFilter.dateRange,  // For backward compatibility
+        dateFilter,
         isLoading,
         setActiveBrand,
-        setDateRange,
+        setDateRange,  // Legacy method
+        setDateFilter,
+        setPreset,
         refetchBrands: fetchBrands,
       }}
     >
